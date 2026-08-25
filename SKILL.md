@@ -9,6 +9,24 @@ Runs an **already approved** plan through the graph engine bundled with this ski
 tasks, subagents executing the independent ones in parallel, a validation gate before anything
 is `done`, and a read-only dashboard the dev can watch.
 
+## When to use
+
+- An **approved plan of ~5+ tasks** where the ORDER of work matters
+- Tasks **independent enough to parallelise** across subagents — that is the graph's payoff
+- When "done" must mean something **checked**: every task passes a fresh reviewer, never a
+  self-report
+- Long runs the dev wants to **watch live** instead of reading a report afterwards
+
+## When NOT to use
+
+- **No approved plan yet** — route to your planning workflow first; this skill executes,
+  it never plans (see below)
+- **Small or strictly sequential work** — a 3-task chain needs no orchestrator; just do it
+- **As a planning tool** — translating an approved task list into the plan format is this
+  skill's job; inventing the tasks is not
+- **Solo agents without subagent dispatch** — executors and reviewers must be separate
+  agents; without that, the reviewer gate has nothing to enforce
+
 **This skill does not plan.** The plan comes from your planning workflow (a spec skill's
 `tasks.md`, or the dev directly). If there is no approved plan yet, stop and say so —
 orchestrating an unapproved plan just parallelises the wrong work.
