@@ -122,30 +122,23 @@
   .node .elapsed { position: absolute; right: 8px; top: 5px; font-size: 9px; color: var(--running); }
   .node[data-st="done"]    { border-color: color-mix(in srgb, var(--done) 45%, var(--line)); }
   .node[data-st="done"] .dot    { background: var(--done); }
-  .node[data-st="running"] { border-color: var(--running); animation: npulse 1.5s ease-in-out infinite; }
+  /* Running/reviewing cards hold a STEADY glow — motion belongs to the edges and the
+     typing dots; a repeating box-shadow pulse makes the card text shimmer (dev, 2026-08-25). */
+  .node[data-st="running"] { border-color: var(--running); box-shadow: 0 0 10px 0 rgba(252, 180, 0, .22); }
   .node[data-st="running"] .dot { background: var(--running); }
-  .node[data-st="running"] .dot::after { content: ''; position: absolute; inset: -4px; border-radius: 50%;
-               border: 1px solid var(--running); animation: ripple 1.5s ease-out infinite; }
-  .node[data-st="ready"] .dot   { background: var(--ready); animation: readyblink 1.4s ease-in-out infinite; }
+  .node[data-st="ready"] .dot   { background: var(--ready); box-shadow: 0 0 6px 1px rgba(59, 130, 246, .45); }
   .node[data-st="ready"]   { border-color: color-mix(in srgb, var(--ready) 55%, var(--line)); }
   .node[data-st="failed"]  { border-color: var(--failed); }
   .node[data-st="failed"] .dot  { background: var(--failed); color: #fff; }
   .node[data-st="waiting"] .dot { background: var(--waiting); }
   .node[data-st="waiting"] { opacity: .72; }
-  .node[data-st="reviewing"] { border-color: var(--review);
-                               animation: rpulse 1.6s ease-in-out infinite; }
+  .node[data-st="reviewing"] { border-color: var(--review); box-shadow: 0 0 10px 0 rgba(34, 211, 238, .22); }
   .node[data-st="reviewing"] .dot { background: var(--review); }
-  .node[data-st="reviewing"] .dot::after { content: ''; position: absolute; inset: -4px;
-               border-radius: 50%; border: 1px solid var(--review); animation: ripple 1.6s ease-out infinite; }
   .node[data-st="reviewing"] .ag { color: var(--review); }
-  @keyframes rpulse { 50% { box-shadow: 0 0 12px 0 rgba(34, 211, 238, .35); } }
   .node[data-st="blocked"] { border-color: var(--blocked); }
   .node[data-st="blocked"] .dot { background: var(--blocked); }
   .node[data-st="skipped"] { opacity: .38; }
   .node[data-st="skipped"] .dot { background: var(--skipped); }
-  @keyframes npulse { 50% { box-shadow: 0 0 12px 0 rgba(252, 180, 0, .35); } }
-  @keyframes ripple { from { opacity: .8; transform: scale(.7); } to { opacity: 0; transform: scale(1.6); } }
-  @keyframes readyblink { 50% { box-shadow: 0 0 6px 1px rgba(59, 130, 246, .6); } }
 
   /* ---- subagent at work: orbiting ring on the dot + typing dots beside the agent name */
   .node[data-st="running"] .dot::before { content: ''; position: absolute; inset: -5px; border-radius: 50%;
