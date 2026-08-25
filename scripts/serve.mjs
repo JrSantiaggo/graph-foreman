@@ -52,10 +52,16 @@ const flag = (name, fallback) => {
 const PORT = Number(flag('port', 4949))
 const RUN_FLAG = flag('run', null)
 
+/* The run name reaches join() as a path segment, so it is allowlisted, never trusted:
+ * plain slug, no leading dot, no separators. Applies to ?run=, --run and CURRENT alike. */
+function safeRun(name) {
+  return name && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) ? name : null
+}
+
 function currentRun() {
-  if (RUN_FLAG) return RUN_FLAG
+  if (RUN_FLAG) return safeRun(RUN_FLAG)
   const p = join(GRAPH_DIR, 'CURRENT')
-  return existsSync(p) ? readFileSync(p, 'utf8').trim() : null
+  return existsSync(p) ? safeRun(readFileSync(p, 'utf8').trim()) : null
 }
 
 /** Same derivation the engine uses — duplicated on purpose so this stays dependency-free
@@ -83,8 +89,9 @@ function json(res, code, body) {
 }
 
 createServer((req, res) => {
+  try {
   const url = new URL(req.url, `http://localhost:${PORT}`)
-  const run = url.searchParams.get('run') ?? currentRun()
+  const run = safeRun(url.searchParams.get('run')) ?? currentRun()
 
   if (url.pathname === '/api/state') {
     if (!run) return json(res, 404, { error: 'no run' })
@@ -110,6 +117,12 @@ createServer((req, res) => {
 
   res.writeHead(404)
   res.end('not found')
-}).listen(PORT, () => {
+  /* A corrupt state.json (or a mid-write read) must cost one response, never the process. */
+  } catch (e) {
+    json(res, 500, { error: String(e?.message ?? e) })
+  }
+/* Loopback ONLY: this is a read-only dashboard for the dev's own browser. Binding every
+ * interface would expose run state to the local network for no benefit. */
+}).listen(PORT, '127.0.0.1', () => {
   console.log(`[graph] dashboard on http://localhost:${PORT} (run: ${currentRun() ?? '—'})`)
 })
