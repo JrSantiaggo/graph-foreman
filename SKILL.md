@@ -70,6 +70,9 @@ mechanical, and only two fields carry judgment:
   one you omit hands two agents the same file.
 - **`validation` is what must be TRUE before done**, written so a different agent could check
   it. "tests pass" is not that; "test suite green + the 3 new cases named in the task" is.
+  When the contract is executable, prefer the structured form — `[{ "run": "<command>",
+  "expect": "<what green means>" }]` — so the reviewer runs exactly what is written instead
+  of interpreting prose. Prose stays valid for contracts that are not commands.
 - **`touches` lists the paths the task writes** (prefixes). `init` refuses two tasks that can
   run in parallel and declare overlapping paths — the collision is caught while it is still a
   planning mistake, before two agents get the same file. Optional, but omitting it leaves the
@@ -78,7 +81,8 @@ mechanical, and only two fields carry judgment:
 A task is **isolated in space, ordered in time**: never a file shared with a task beside it,
 while building on what its deps produced is the whole point.
 
-Format and the full CLI: [README.md](README.md) beside this file.
+Full task contract (every field, defaults, per-task `requireReview`/`maxAttempts`
+overrides) and the CLI: [README.md](README.md) beside this file.
 
 ## 2. Start the run AND the dashboard
 

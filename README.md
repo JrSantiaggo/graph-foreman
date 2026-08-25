@@ -90,6 +90,40 @@ history). Plans live in `.specs/graph/plans/*.plan.json`. Node 18+, zero depende
 }
 ```
 
+### Task contract
+
+Every field a planning skill needs to emit. Only `id` and `title` are required.
+
+| Field           | Type                          | Default   | Meaning                                                                                       |
+| --------------- | ----------------------------- | --------- | --------------------------------------------------------------------------------------------- |
+| `id`            | string                        | required  | Unique task id (`T1`, `T2`…) — referenced by `deps`                                           |
+| `title`         | string                        | required  | What this task delivers, one line                                                             |
+| `phase`         | string                        | —         | Id of a `phases[]` entry; groups the task in status and dashboard swimlanes                   |
+| `deps`          | string[]                      | `[]`      | Task ids that must be `done`/`skipped` first — the ENTIRE scheduling model                    |
+| `validation`    | string \| {run, expect}[]    | `""`      | What must be TRUE before done. Prose, or structured steps (see below)                         |
+| `touches`       | string[]                      | `[]`      | Path prefixes the task writes; `init` refuses parallel tasks with overlapping paths           |
+| `tags`          | string[]                      | `[]`      | Free labels (`migration`, `docs`…) — informational only                                       |
+| `requireReview` | boolean                       | inherit   | Per-task override of the plan's `requireReview` (e.g. `false` for a mechanical docs task)     |
+| `maxAttempts`   | number                        | `3`       | Per-task retry cap before `retry` demands escalation (`--force` overrides)                    |
+
+Plan-level fields: `name` (required), `description`, `phases[]` (`{id, title}`),
+`maxParallel` (4), `maxExecutors` (3), `requireReview` (true).
+
+**Structured validation.** When the contract IS executable, prefer steps over prose — the
+reviewer then runs exactly what is written instead of interpreting:
+
+```json
+"validation": [
+  { "run": "pnpm test:changed", "expect": "green, includes the 3 new service cases" },
+  { "run": "pnpm lint && pnpm typecheck", "expect": "clean" }
+]
+```
+
+The engine treats `validation` as opaque either way (prose stays valid — plenty of real
+contracts are not commands: "RLS policy exists on table X"); the dashboard renders steps as
+separate lines. The reviewer still runs the gate ITSELF and records evidence — a structured
+contract changes what it reads, never who bangs the gavel.
+
 **Tuning parallelism.** `maxExecutors` (default 3) caps agents WRITING at once;
 `maxParallel` (default 4) caps total busy agents (running + reviewing). The defaults are a
 safe floor, not a law — a bigger machine and a wide plan can run 6+8 or more. Two things to

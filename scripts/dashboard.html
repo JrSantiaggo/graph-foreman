@@ -487,6 +487,15 @@ function subState(t) {
 
 function fmtAge(sec) { return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h` }
 
+/* validation may be a prose string or a structured list of {run, expect} steps —
+   the engine treats it as opaque; here each step renders as its own line. */
+function fmtContract(v) {
+  if (!v) return '—'
+  if (typeof v === 'string') return v
+  const steps = Array.isArray(v) ? v : [v]
+  return steps.map((c) => c.run ? `<code>${c.run}</code>${c.expect ? ` → ${c.expect}` : ''}` : JSON.stringify(c)).join('<br>')
+}
+
 function render(s, events) {
   /* Anchor CSS animation phase to the page clock for elements RECREATED each render
      (orbit ring, typing dots, sidebar heartbeat): they start mid-cycle instead of at
@@ -821,7 +830,7 @@ function fillPop(id) {
       <dt>Phase</dt><dd>${t.phase ?? '—'}</dd>
       <dt>Depends on</dt><dd>${t.deps.map(depChip).join('') || '—'}</dd>
       <dt>Unlocks</dt><dd>${dependents.map(depChip).join('') || '—'}</dd>
-      <dt>Validation contract</dt><dd>${t.validation || '—'}</dd>
+      <dt>Validation contract</dt><dd>${fmtContract(t.validation)}</dd>
       ${t.blockReason ? `<dt>Blocked</dt><dd>${t.blockReason}</dd>` : ''}
       ${t.skipReason ? `<dt>Skipped</dt><dd>${t.skipReason}</dd>` : ''}
       <dt>Attempts</dt><dd>${t.attempts.map((a) =>

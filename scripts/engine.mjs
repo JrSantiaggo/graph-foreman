@@ -269,6 +269,8 @@ const commands = {
         title: t.title,
         deps: t.deps ?? [],
         validation: t.validation ?? '',
+        requireReview: t.requireReview,   // per-task override; undefined = inherit plan
+        maxAttempts: t.maxAttempts,       // per-task override; undefined = soft default
         tags: t.tags ?? [],
         touches: t.touches ?? [],
         state: 'pending',
@@ -447,7 +449,7 @@ const commands = {
       die(`${id} has no passing validation for the current attempt — validate first`)
     /* The gavel belongs to the reviewer. A validation the executor recorded about its own
        work is a self-report, and the whole point of the role split is that it does not count. */
-    if (state.plan.requireReview !== false && last.by !== 'review')
+    if ((t.requireReview ?? state.plan.requireReview) !== false && last.by !== 'review')
       die(`${id} was validated by the ${last.by ?? 'executor'}, not a reviewer — run \`review ${id} --agent <name>\` first`)
     t.state = 'done'
     t.attempts.at(-1).endedAt = new Date().toISOString()
@@ -483,8 +485,9 @@ const commands = {
     const state = loadState(name)
     const t = getTask(state, id)
     if (t.state !== 'failed') die(`${id} is ${t.state}, not failed`)
-    if (t.attempts.length >= MAX_ATTEMPTS_SOFT && !args.force)
-      die(`${id} already has ${t.attempts.length} attempts — escalate instead, or --force`)
+    const cap = t.maxAttempts ?? MAX_ATTEMPTS_SOFT
+    if (t.attempts.length >= cap && !args.force)
+      die(`${id} already has ${t.attempts.length} attempts (cap ${cap}) — escalate instead, or --force`)
     t.state = 'pending'
     t.agent = null
     t.reviewer = null
