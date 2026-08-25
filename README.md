@@ -11,6 +11,8 @@ installable via [skills.sh](https://skills.sh/):
 npx skills add JrSantiaggo/graph-foreman
 ```
 
+![The live dashboard mid-run: orchestrator dispatching, a task in review, phases as swimlanes](https://raw.githubusercontent.com/JrSantiaggo/graph-foreman/media/dashboard.png)
+
 ## What it does
 
 - **Parallel executors, capped** — independent tasks run at once; up to 3 executors out of

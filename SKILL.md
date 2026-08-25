@@ -5,6 +5,8 @@ description: Executes an approved plan as a task GRAPH — orchestrator + parall
 
 # /graph-foreman [plan|run]
 
+![Live dashboard of a run: phase swimlanes, parallel executors, a task under review](https://raw.githubusercontent.com/JrSantiaggo/graph-foreman/media/dashboard.png)
+
 Runs an **already approved** plan through the graph engine bundled with this skill: a DAG of
 tasks, subagents executing the independent ones in parallel, a validation gate before anything
 is `done`, and a read-only dashboard the dev can watch.
