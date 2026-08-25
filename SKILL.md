@@ -107,7 +107,10 @@ node $ENGINE ready       # what can start NOW
 
 **Executors write. A REVIEWER bangs the gavel.** They are different agents, always.
 
-- **Up to 3 executors** run at once, out of a total cap of 4 busy agents. Executors are
+- **Up to 3 executors** run at once, out of a total cap of 4 busy agents — the safe
+  defaults, overridable per plan with `"maxExecutors"` and `"maxParallel"`. Scale them to
+  the project and the machine, but keep the INVARIANT: executors strictly below the total
+  (e.g. 6 + 8), because that headroom is what keeps review unblockable. Executors are
   capped BELOW the total so review always has room — if executors could fill every slot, a
   finished task would sit unverified waiting for one, which is the worst state the graph can
   hold: work done, and nobody able to say whether it counts.

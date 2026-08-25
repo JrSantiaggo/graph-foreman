@@ -74,6 +74,7 @@ history). Plans live in `.specs/graph/plans/*.plan.json`. Node 18+, zero depende
 {
   "name": "my-feature",
   "maxParallel": 4,
+  "maxExecutors": 3,
   "phases": [{ "id": "F1", "title": "Server side" }],
   "tasks": [
     {
@@ -88,6 +89,14 @@ history). Plans live in `.specs/graph/plans/*.plan.json`. Node 18+, zero depende
   ]
 }
 ```
+
+**Tuning parallelism.** `maxExecutors` (default 3) caps agents WRITING at once;
+`maxParallel` (default 4) caps total busy agents (running + reviewing). The defaults are a
+safe floor, not a law — a bigger machine and a wide plan can run 6+8 or more. Two things to
+know when raising them: keep `maxExecutors` strictly below `maxParallel` (that headroom is
+what keeps review permanently unblockable — the engine's core property), and remember the
+real ceiling is usually elsewhere: the plan's dep width, your API rate limits, and token
+burn scale with every extra executor.
 
 `deps` is the whole scheduling model: a task is **ready** when every dep is `done` or
 `skipped`. Serialization (e.g. migrations must never run in parallel) is expressed as a dep
