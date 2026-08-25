@@ -487,6 +487,9 @@ function subState(t) {
 
 function fmtAge(sec) { return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h` }
 
+/* timestamps are stored in UTC (ISO); render them in the viewer's own timezone */
+function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString(undefined, { hour12: false }) : '' }
+
 /* validation may be a prose string or a structured list of {run, expect} steps —
    the engine treats it as opaque; here each step renders as its own line. */
 function fmtContract(v) {
@@ -678,7 +681,7 @@ function render(s, events) {
     : '<span class="empty">none</span>'
   $('#events').innerHTML = events.slice().reverse().map((e) => {
     const extra = e.reason ?? e.evidence ?? e.agent ?? e.text ?? ''
-    return `<div class="ev"><span class="t-${e.type}"><time>${e.at.slice(11, 19)}</time><b>${e.type.replace('task_', '')}</b> ${e.task ?? ''} <span style="color:var(--dim)">${String(extra).slice(0, 80)}</span></span></div>`
+    return `<div class="ev"><span class="t-${e.type}"><time>${fmtTime(e.at)}</time><b>${e.type.replace('task_', '')}</b> ${e.task ?? ''} <span style="color:var(--dim)">${String(extra).slice(0, 80)}</span></span></div>`
   }).join('')
 
   // one-shot flash on nodes touched by events that arrived since the previous tick
@@ -834,10 +837,10 @@ function fillPop(id) {
       ${t.blockReason ? `<dt>Blocked</dt><dd>${t.blockReason}</dd>` : ''}
       ${t.skipReason ? `<dt>Skipped</dt><dd>${t.skipReason}</dd>` : ''}
       <dt>Attempts</dt><dd>${t.attempts.map((a) =>
-        `<div class="att">#${a.n} @${a.agent} · ${a.startedAt?.slice(11, 19)}${a.endedAt ? ` → ${a.endedAt.slice(11, 19)}` : ' (running)'} ${a.result ?? ''} ${a.reason ?? ''}</div>`).join('') || '—'}</dd>
+        `<div class="att">#${a.n} @${a.agent} · ${fmtTime(a.startedAt)}${a.endedAt ? ` → ${fmtTime(a.endedAt)}` : ' (running)'} ${a.result ?? ''} ${a.reason ?? ''}</div>`).join('') || '—'}</dd>
       <dt>Validations</dt><dd>${t.validations.map((v) =>
-        `<div class="vitem ${v.ok ? '' : 'bad'}">${v.ok ? 'OK' : 'FAILED'} · ${v.at.slice(11, 19)}<br>${v.evidence}</div>`).join('') || '—'}</dd>
-      <dt>Notes</dt><dd>${t.notes.map((n) => `<div class="att">${n.at.slice(11, 19)} — ${n.text}</div>`).join('') || '—'}</dd>
+        `<div class="vitem ${v.ok ? '' : 'bad'}">${v.ok ? 'OK' : 'FAILED'} · ${fmtTime(v.at)}<br>${v.evidence}</div>`).join('') || '—'}</dd>
+      <dt>Notes</dt><dd>${t.notes.map((n) => `<div class="att">${fmtTime(n.at)} — ${n.text}</div>`).join('') || '—'}</dd>
     </dl>
     ${POP?.pinned ? '' : '<div class="pin-hint">click the task to pin · moves away, closes</div>'}`
 }
