@@ -47,6 +47,21 @@ After installing, fill in the **"Project overrides"** section of [SKILL.md](SKIL
 project's agent rules file): the per-task validation gate, the commit policy, where the
 approved plan comes from. The engine never changes between projects; that section is what does.
 
+## What makes a project graph-ready
+
+The engine runs anywhere; the QUALITY of what N parallel executors produce depends on the
+repo, because executors are fresh agents by design — the shared session memory a solo agent
+accumulates does not exist here. **The repo is the executors' only shared memory.**
+
+1. **A runnable gate** (required): a command that answers pass/fail. Without it,
+   `validation` is opinion and the reviewer gate has nothing to enforce.
+2. **Written conventions, enforced where possible**: an agent rules file plus lint that
+   FAILS on violations. Five executors with no rules produce five styles — and the
+   reviewer checks the task's contract, not taste. Prose inside each task works but does
+   not scale; a rule written once in the repo reaches every executor for free.
+3. **Scaffolding skills** (create-a-module, create-a-component): the difference between
+   executors converging on the house pattern and each one improvising it.
+
 ## Mechanism vs discipline
 
 The engine is deliberately dumb: it holds the graph, the states, the attempts and the history.
