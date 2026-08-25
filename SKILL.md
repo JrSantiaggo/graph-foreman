@@ -41,6 +41,10 @@ route them to their planning workflow or draft the plan and SHOW it — the run 
 their yes, never before.
 
 Argument: a plan file, a run name to RESUME, or nothing (then use `.specs/graph/CURRENT`).
+With no argument AND no current run, do not guess: if this session just produced the approved
+plan, use it; otherwise ask the dev where it lives (or name the candidates you found —
+`tasks.md`, a specs directory — and get a yes before translating one). The SOURCE plan can
+live anywhere the project keeps it; only the run state is fixed at `.specs/graph/`.
 
 ## 0. Resolving the engine
 
