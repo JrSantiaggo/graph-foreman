@@ -187,3 +187,7 @@ would ever open. Below ~55% zoom the cards drop to **id + colour only**; a subti
 40% scale is noise, and reading the run by colour is the whole point of being zoomed out.
 
 Serving a run other than `CURRENT`: `node .claude/skills/graph-foreman/scripts/serve.mjs --run <name>`.
+
+## License
+
+[MIT](LICENSE)
