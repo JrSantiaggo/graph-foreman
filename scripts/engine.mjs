@@ -110,8 +110,18 @@ function runName() {
   die('no run selected — pass --run <name> or init one')
 }
 
+/* The run name reaches join() as a path segment, so it is allowlisted, never trusted:
+ * plain slug, no leading dot, no separators — same rule as serve.mjs, keep in sync.
+ * Enforced HERE because runDir is the one chokepoint every filesystem use goes through
+ * (state, events, lock, init) — a CURRENT edited to "../../x" must die, not traverse. */
+function safeRun(name) {
+  if (!name || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name))
+    die(`invalid run name "${name}" — letters, digits, ".", "_" and "-" only (no leading dot, no path separators)`)
+  return name
+}
+
 function runDir(name) {
-  return join(GRAPH_DIR, name)
+  return join(GRAPH_DIR, safeRun(name))
 }
 
 function loadState(name) {

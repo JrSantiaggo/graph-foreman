@@ -652,6 +652,15 @@ function analyse(s, events) {
   }
 }
 
+/* Every free-text field in state.json (titles, evidence, reasons, notes, agent labels)
+   is agent-authored — escape it at EVERY interpolation into markup. The server is
+   read-only, so this page is the only place injected markup could ever execute. */
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+/* Ids that land inside onclick='...' attributes: JS-string-escape, THEN HTML-escape —
+   the HTML parser decodes entities before the JS engine ever sees the string. */
+const jsq = (v) => esc(String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"))
+
 /* timestamps are stored in UTC (ISO); render them in the viewer's own timezone */
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString(undefined, { hour12: false }) : '' }
 
@@ -659,9 +668,9 @@ function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString(undefined,
    the engine treats it as opaque; here each step renders as its own line. */
 function fmtContract(v) {
   if (!v) return '—'
-  if (typeof v === 'string') return v
+  if (typeof v === 'string') return esc(v)
   const steps = Array.isArray(v) ? v : [v]
-  return steps.map((c) => c.run ? `<code>${c.run}</code>${c.expect ? ` → ${c.expect}` : ''}` : JSON.stringify(c)).join('<br>')
+  return steps.map((c) => c.run ? `<code>${esc(c.run)}</code>${c.expect ? ` → ${esc(c.expect)}` : ''}` : esc(JSON.stringify(c))).join('<br>')
 }
 
 function render(s, events) {
@@ -690,7 +699,7 @@ function render(s, events) {
   $('#lanes').innerHTML = lanes.map((p, i) => {
     const y = laneY0 + i * LANE_H
     return `<div class="lane" style="top:${y}px;height:${LANE_H - 14}px">
-      <span class="lane-h">${p.id} · ${p.title}</span></div>`
+      <span class="lane-h">${esc(p.id)} · ${esc(p.title)}</span></div>`
   }).join('')
 
   // nodes — a running task also tells WHERE it is in the loop: agent still working
@@ -701,21 +710,21 @@ function render(s, events) {
     const sub2 = subState(t)
     const working = '<span class="work"><i></i><i></i><i></i></span>'
     const sub = e === 'reviewing'
-      ? `<span class="ag">⌕ @${t.reviewer}</span>${sub2 === 'valfail' ? ' <span class="vbadge bad">✗ rejected</span>' : working}`
+      ? `<span class="ag">⌕ @${esc(t.reviewer)}</span>${sub2 === 'valfail' ? ' <span class="vbadge bad">✗ rejected</span>' : working}`
       : e === 'running' && t.agent
-      ? `<span class="ag">@${t.agent}</span>${sub2 === 'validated' ? ' <span class="vbadge ok">✓ validated</span>'
+      ? `<span class="ag">@${esc(t.agent)}</span>${sub2 === 'validated' ? ' <span class="vbadge ok">✓ validated</span>'
           : sub2 === 'valfail' ? ' <span class="vbadge bad">✗ rework</span>' + working : working}`
       : e === 'blocked'
-      ? `<span class="ask">✋ waiting on you</span>${t.blockReason ? ` <span style="color:var(--dim)">— ${t.blockReason}</span>` : ''}`
-      : e === 'waiting' ? `← ${s.derived[t.id].blockedBy.join(',')}`
-      : t.title
+      ? `<span class="ask">✋ waiting on you</span>${t.blockReason ? ` <span style="color:var(--dim)">— ${esc(t.blockReason)}</span>` : ''}`
+      : e === 'waiting' ? `← ${esc(s.derived[t.id].blockedBy.join(','))}`
+      : esc(t.title)
     const retry = t.attempts.length > 1 ? ` ↻${t.attempts.length}` : ''
     const run = t.attempts.at(-1)
     const clock = e === 'reviewing' ? run?.reviewStartedAt : e === 'running' ? run?.startedAt : null
     const elapsed = clock ? `<span class="elapsed">${fmtElapsed(clock)}</span>` : ''
-    return `<div class="node" data-st="${e}" data-sub="${sub2}" data-id="${t.id}" style="left:${p.x}px;top:${p.y}px" onclick="openTask('${t.id}')">
+    return `<div class="node" data-st="${e}" data-sub="${sub2}" data-id="${esc(t.id)}" style="left:${p.x}px;top:${p.y}px" onclick="openTask('${jsq(t.id)}')">
       ${elapsed}<span class="dot">${sub2 === 'validated' ? '✓' : DOT[e] ?? ''}</span>
-      <span class="id">${t.id}<small style="color:var(--dim);font-weight:400"> ${t.phase ?? ''}${retry}</small></span>
+      <span class="id">${esc(t.id)}<small style="color:var(--dim);font-weight:400"> ${esc(t.phase ?? '')}${retry}</small></span>
       <span class="sub">${sub}</span></div>`
   }).join('')
 
@@ -761,7 +770,7 @@ function render(s, events) {
         d = `M ${ax} ${y1} C ${ax} ${y1 + bend}, ${bx} ${y2 - bend}, ${bx} ${y2}`
         cls = stateCls
       }
-      edgesHtml += `<path class="${cls}" data-from="${dep}" data-to="${t.id}" d="${d}"/>`
+      edgesHtml += `<path class="${cls}" data-from="${esc(dep)}" data-to="${esc(t.id)}" d="${d}"/>`
     }
   }
   // orchestrator sits ABOVE the graph, centred, fanning a live line down to each task
@@ -783,7 +792,7 @@ function render(s, events) {
     if (!b) continue
     const x2 = b.x + NODE_W / 2, y2 = b.y - 4
     const bend = Math.max(30, (y2 - ocy) * 0.45)
-    edgesHtml += `<path class="e-dispatch" data-from="__orch" data-to="${t.id}" d="M ${ocx} ${ocy} C ${ocx} ${ocy + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}"/>`
+    edgesHtml += `<path class="e-dispatch" data-from="__orch" data-to="${esc(t.id)}" d="M ${ocx} ${ocy} C ${ocx} ${ocy + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}"/>`
   }
   // reviewer sits beside the orchestrator, both above the graph: a task is dispatched
   // DOWN and climbs back UP to be judged before it may proceed. Keeping the hubs off the
@@ -804,7 +813,7 @@ function render(s, events) {
     // drawn task → reviewer: the arrow lands on the hub, so it reads as going BACK up
     const x1 = b.x + NODE_W / 2, y1 = b.y - 4
     const bend = Math.max(30, (y1 - rcy) * 0.45)
-    edgesHtml += `<path class="e-review" data-from="${t.id}" data-to="__rev" d="M ${x1} ${y1} C ${x1} ${y1 - bend}, ${rcx} ${rcy + bend}, ${rcx} ${rcy + 4}"/>`
+    edgesHtml += `<path class="e-review" data-from="${esc(t.id)}" data-to="__rev" d="M ${x1} ${y1} C ${x1} ${y1 - bend}, ${rcx} ${rcy + bend}, ${rcx} ${rcy + 4}"/>`
   }
   /* Only touch the SVG when an edge actually changed: recreating a path restarts its
      dash-flow animation, and (unlike the HTML elements) the --epoch anchor does not
@@ -828,7 +837,7 @@ function render(s, events) {
   if (last) {
     const age = Math.max(0, Math.floor((Date.now() - Date.parse(last.at)) / 1000))
     orch.classList.toggle('live', age < 30)
-    orch.innerHTML = `<span class="hb"></span>orch <b>${last.type.replace('task_', '').replace('run_', '')}</b> ${last.task ?? ''} · ${fmtAge(age)}`
+    orch.innerHTML = `<span class="hb"></span>orch <b>${esc(last.type.replace('task_', '').replace('run_', ''))}</b> ${esc(last.task ?? '')} · ${fmtAge(age)}`
   } else {
     orch.classList.remove('live')
     orch.innerHTML = '<span class="hb"></span>orchestrator idle'
@@ -840,17 +849,17 @@ function render(s, events) {
   $('#parTitle').innerHTML = `Working <span style="color:${running.length >= maxExec ? 'var(--running)' : 'var(--dim)'}">${running.length}/${maxExec}</span> · review <span style="color:${inReview.length ? 'var(--review)' : 'var(--dim)'}">${inReview.length}</span>`
   $('#parallel').innerHTML = running.length || inReview.length
     ? [
-        ...running.map((t) => `<span onclick="openTask('${t.id}')"><i class="sp"></i>${t.id} <span style="color:var(--accent)">@${t.agent}</span></span>`),
-        ...inReview.map((t) => `<span class="rev" onclick="openTask('${t.id}')"><i class="sp rev"></i>${t.id} <span style="color:var(--review)">⌕ @${t.reviewer}</span></span>`),
+        ...running.map((t) => `<span onclick="openTask('${jsq(t.id)}')"><i class="sp"></i>${esc(t.id)} <span style="color:var(--accent)">@${esc(t.agent)}</span></span>`),
+        ...inReview.map((t) => `<span class="rev" onclick="openTask('${jsq(t.id)}')"><i class="sp rev"></i>${esc(t.id)} <span style="color:var(--review)">⌕ @${esc(t.reviewer)}</span></span>`),
       ].join('')
     : '<span class="empty">nothing running</span>'
   const bad = list.filter((t) => eff(t.id) === 'failed' || t.attempts.length > 1)
   $('#failures').innerHTML = bad.length
-    ? bad.map((t) => `<div class="ev">${t.id} — ${t.attempts.length} attempt(s)${t.attempts.at(-1)?.reason ? ` · ${t.attempts.at(-1).reason}` : ''}</div>`).join('')
+    ? bad.map((t) => `<div class="ev">${esc(t.id)} — ${t.attempts.length} attempt(s)${t.attempts.at(-1)?.reason ? ` · ${esc(t.attempts.at(-1).reason)}` : ''}</div>`).join('')
     : '<span class="empty">none</span>'
   $('#events').innerHTML = events.slice().reverse().map((e) => {
     const extra = e.reason ?? e.evidence ?? e.agent ?? e.text ?? ''
-    return `<div class="ev"><span class="t-${e.type}"><time>${fmtTime(e.at)}</time><b>${e.type.replace('task_', '')}</b> ${e.task ?? ''} <span style="color:var(--dim)">${String(extra).slice(0, 80)}</span></span></div>`
+    return `<div class="ev"><span class="t-${esc(e.type)}"><time>${fmtTime(e.at)}</time><b>${esc(e.type.replace('task_', ''))}</b> ${esc(e.task ?? '')} <span style="color:var(--dim)">${esc(String(extra).slice(0, 80))}</span></span></div>`
   }).join('')
 
   // one-shot flash on nodes touched by events that arrived since the previous tick
@@ -996,23 +1005,23 @@ function fillPop(id) {
   const ss = subState(t)
   const live = e === 'running' && run?.startedAt
     ? `${ss === 'validated' ? ' ✓ validated' : ss === 'valfail' ? ' ✗ rework' : ''} · ${fmtElapsed(run.startedAt)}` : ''
-  const depChip = (d) => `<span class="dep" onclick="openTask('${d}')">${DOT[eff(d)] ?? ''} ${d}</span>`
+  const depChip = (d) => `<span class="dep" onclick="openTask('${jsq(d)}')">${DOT[eff(d)] ?? ''} ${esc(d)}</span>`
   const dependents = Object.values(STATE.tasks).filter((x) => x.deps.includes(id)).map((x) => x.id)
   $('#popBody').innerHTML = `
-    <h2>${t.id} <span class="st" style="color:${c};border-color:${c}">${e}${live}</span></h2>
-    <div style="color:var(--dim);font-size:12px;margin-top:4px">${t.title}</div>
+    <h2>${esc(t.id)} <span class="st" style="color:${c};border-color:${c}">${e}${live}</span></h2>
+    <div style="color:var(--dim);font-size:12px;margin-top:4px">${esc(t.title)}</div>
     <dl>
-      <dt>Phase</dt><dd>${t.phase ?? '—'}</dd>
+      <dt>Phase</dt><dd>${esc(t.phase ?? '—')}</dd>
       <dt>Depends on</dt><dd>${t.deps.map(depChip).join('') || '—'}</dd>
       <dt>Unlocks</dt><dd>${dependents.map(depChip).join('') || '—'}</dd>
       <dt>Validation contract</dt><dd>${fmtContract(t.validation)}</dd>
-      ${t.blockReason ? `<dt>Blocked</dt><dd>${t.blockReason}</dd>` : ''}
-      ${t.skipReason ? `<dt>Skipped</dt><dd>${t.skipReason}</dd>` : ''}
+      ${t.blockReason ? `<dt>Blocked</dt><dd>${esc(t.blockReason)}</dd>` : ''}
+      ${t.skipReason ? `<dt>Skipped</dt><dd>${esc(t.skipReason)}</dd>` : ''}
       <dt>Attempts</dt><dd>${t.attempts.map((a) =>
-        `<div class="att">#${a.n} @${a.agent} · ${fmtTime(a.startedAt)}${a.endedAt ? ` → ${fmtTime(a.endedAt)}` : ' (running)'} ${a.result ?? ''} ${a.reason ?? ''}</div>`).join('') || '—'}</dd>
+        `<div class="att">#${a.n} @${esc(a.agent)} · ${fmtTime(a.startedAt)}${a.endedAt ? ` → ${fmtTime(a.endedAt)}` : ' (running)'} ${esc(a.result ?? '')} ${esc(a.reason ?? '')}</div>`).join('') || '—'}</dd>
       <dt>Validations</dt><dd>${t.validations.map((v) =>
-        `<div class="vitem ${v.ok ? '' : 'bad'}">${v.ok ? 'OK' : 'FAILED'} · ${fmtTime(v.at)}<br>${v.evidence}</div>`).join('') || '—'}</dd>
-      <dt>Notes</dt><dd>${t.notes.map((n) => `<div class="att">${fmtTime(n.at)} — ${n.text}</div>`).join('') || '—'}</dd>
+        `<div class="vitem ${v.ok ? '' : 'bad'}">${v.ok ? 'OK' : 'FAILED'} · ${fmtTime(v.at)}<br>${esc(v.evidence)}</div>`).join('') || '—'}</dd>
+      <dt>Notes</dt><dd>${t.notes.map((n) => `<div class="att">${fmtTime(n.at)} — ${esc(n.text)}</div>`).join('') || '—'}</dd>
     </dl>
     ${POP?.pinned ? '' : '<div class="pin-hint">click the task to pin · moves away, closes</div>'}`
 }
@@ -1065,7 +1074,7 @@ function renderResults(s) {
     const headroom = a.wall - a.cpLen
     f.push(headroom / Math.max(1, a.wall) < 0.25
       ? `<div class="finding good"><b>The graph shape is the limit, not the agent count.</b>
-         <span class="why">The critical path (${fmtMs(a.cpLen)}) is ${pct(a.cpLen, a.wall)}% of the wall clock (${fmtMs(a.wall)}) — more executors cannot beat that chain. To go faster, break the chain: ${a.cpChain.join(' → ')}.</span></div>`
+         <span class="why">The critical path (${fmtMs(a.cpLen)}) is ${pct(a.cpLen, a.wall)}% of the wall clock (${fmtMs(a.wall)}) — more executors cannot beat that chain. To go faster, break the chain: ${esc(a.cpChain.join(' → '))}.</span></div>`
       : `<div class="finding warn"><b>There is parallelism left on the table.</b>
          <span class="why">The critical path is only ${fmtMs(a.cpLen)} of a ${fmtMs(a.wall)} run, so ${fmtMs(headroom)} went to waiting rather than to dependency — check retries, blocks and dispatch gaps before adding executors.</span></div>`)
   }
@@ -1088,12 +1097,12 @@ function renderResults(s) {
   const cands = ranked.filter((p) => !p.skipsReview && p.reviewed && p.rejected === 0 && p.attempts === 1 && p.review >= a.taskReviewMid)
   if (cands.length) {
     f.push(`<div class="finding info"><b>${cands.length} task(s) where review cost above average and never found anything:</b>
-      <span class="why">${cands.map((p) => `${p.id} (${fmtMs(p.review)})`).join(', ')} — passed first try, no rejection. If they are mechanical by nature, <code>"requireReview": false</code> in the next plan reclaims ${fmtMs(cands.reduce((n, p) => n + p.review, 0))}. If they are merely easy-looking, leave the gate on: those are where a confident agent errs quietly.</span></div>`)
+      <span class="why">${cands.map((p) => `${esc(p.id)} (${fmtMs(p.review)})`).join(', ')} — passed first try, no rejection. If they are mechanical by nature, <code>"requireReview": false</code> in the next plan reclaims ${fmtMs(cands.reduce((n, p) => n + p.review, 0))}. If they are merely easy-looking, leave the gate on: those are where a confident agent errs quietly.</span></div>`)
   }
 
   $('#results').innerHTML = `
     <button class="lbtn" onclick="backToGraph()" style="margin-bottom:14px">← back to the graph</button>
-    <h2>${s.run} — ${s.plan.name}</h2>
+    <h2>${esc(s.run)} — ${esc(s.plan.name)}</h2>
     <div class="note">Derived from this run's attempt timestamps and event log${a.anyLive ? ' · run still ACTIVE, figures move' : ''}. Tokens are not shown: the engine makes no model calls and never sees them — read those from your agent harness.</div>
 
     <div class="tiles">
@@ -1116,7 +1125,7 @@ function renderResults(s) {
       <tr><th>Task</th><th class="num">Exec</th><th class="num">Review</th><th>build vs verify</th>
           <th class="num">Queued</th><th class="num">Blocked</th><th class="num">Att.</th><th class="num">Verdicts</th></tr>
       ${ranked.map((p) => `<tr>
-        <td class="tid" onclick="jumpTo('${p.id}')">${p.id} <span style="color:var(--dim)">${(p.title ?? '').slice(0, 34)}</span></td>
+        <td class="tid" onclick="jumpTo('${jsq(p.id)}')">${esc(p.id)} <span style="color:var(--dim)">${esc((p.title ?? '').slice(0, 34))}</span></td>
         <td class="num">${fmtMs(p.exec)}</td>
         <td class="num">${p.skipsReview ? '<span style="color:var(--dim)">gate only</span>' : fmtMs(p.review)}</td>
         <td>${p.review > 0 ? bar(p.exec, p.review) : ''}</td>

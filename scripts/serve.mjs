@@ -111,7 +111,18 @@ createServer((req, res) => {
   }
 
   if (url.pathname === '/' || url.pathname === '/index.html') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      /* Backstop for the dashboard's own escaping: state.json free text is agent-authored,
+       * and if any of it ever slipped into markup unescaped, this stops the page from
+       * reaching anything beyond its own origin — no external scripts, no cross-origin
+       * fetch (a different localhost PORT is a different origin), no remote images.
+       * 'unsafe-inline' is required: the dashboard is a single self-contained file. */
+      'Content-Security-Policy':
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; " +
+        "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'",
+    })
     return res.end(readFileSync(join(HERE, 'dashboard.html'), 'utf8'))
   }
 
