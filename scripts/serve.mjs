@@ -125,4 +125,16 @@ createServer((req, res) => {
  * interface would expose run state to the local network for no benefit. */
 }).listen(PORT, '127.0.0.1', () => {
   console.log(`[graph] dashboard on http://localhost:${PORT} (run: ${currentRun() ?? '—'})`)
+}).on('error', (e) => {
+  /* A taken port is the NORMAL second-run case (the previous dashboard is still up and
+     already follows CURRENT) — say that, instead of dying with a stack trace. */
+  if (e.code === 'EADDRINUSE') {
+    console.error(
+      `[graph] port ${PORT} is already in use — an earlier dashboard is likely still serving ` +
+        `http://localhost:${PORT} (it follows CURRENT). To run a SECOND one: --port <other>` +
+        `${RUN_FLAG ? '' : ' (add --run <name> to pin it to one run)'}`,
+    )
+    process.exit(1)
+  }
+  throw e
 })

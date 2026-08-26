@@ -142,6 +142,9 @@
   .node[data-st="reviewing"] .ag { color: var(--review); }
   .node[data-st="blocked"] { border-color: var(--blocked); }
   .node[data-st="blocked"] .dot { background: var(--blocked); }
+  /* blocked = a QUESTION for the dev, and the dev is exactly who is looking at this screen —
+     so the card itself says so; a legend colour alone asks to be decoded */
+  .ask { color: var(--blocked); font-weight: 600; }
   .node[data-st="skipped"] { opacity: .38; }
   .node[data-st="skipped"] .dot { background: var(--skipped); }
 
@@ -240,6 +243,38 @@
   .vitem { border-left: 2px solid var(--done); padding: 4px 8px; margin: 5px 0; background: var(--card); font-size: 11.5px; }
   .vitem.bad { border-left-color: var(--failed); }
   .att { color: var(--dim); font-size: 11px; margin: 3px 0; }
+
+  /* ---- results: the run measuring ITSELF. Everything here is derived from the same
+     state.json + events the graph renders — no new collection, no engine involvement. */
+  #results { position: fixed; inset: 46px 0 0; background: var(--bg); z-index: 15;
+             overflow-y: auto; padding: 22px 26px 40px; display: none; }
+  #results.open { display: block; }
+  #results h2 { font-size: 13px; margin-bottom: 3px; }
+  #results .note { color: var(--dim); font-size: 11px; margin-bottom: 18px; }
+  #results h3 { font-size: 11px; color: var(--dim); margin: 26px 0 10px; text-transform: uppercase; letter-spacing: .06em; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .tile .k { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+  .tile .v { font-size: 19px; font-weight: 600; margin-top: 3px; }
+  .tile .s { color: var(--dim); font-size: 10.5px; margin-top: 2px; }
+  .split { display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: var(--line); }
+  .split div { display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: #0b0b0e; font-weight: 600; }
+  .rtable { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .rtable th { text-align: left; color: var(--dim); font-weight: 400; font-size: 10px; text-transform: uppercase;
+               letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .rtable td { padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .rtable tr:hover td { background: var(--card); }
+  .rtable .num { text-align: right; color: var(--dim); }
+  .rtable .tid { color: var(--text); cursor: pointer; }
+  .rtable .tid:hover { color: var(--accent); }
+  .minibar { display: inline-flex; height: 8px; width: 130px; border-radius: 4px; overflow: hidden; background: var(--line); vertical-align: -1px; }
+  .minibar i { height: 100%; flex: 0 0 auto; }
+  .finding { background: var(--card); border-left: 2px solid var(--line); padding: 8px 12px; margin: 7px 0; font-size: 11.5px; }
+  .finding.good { border-left-color: var(--done); }
+  .finding.warn { border-left-color: var(--running); }
+  .finding.info { border-left-color: var(--ready); }
+  .finding b { color: var(--text); }
+  .finding .why { color: var(--dim); display: block; margin-top: 3px; }
 </style>
 </head>
 <body>
@@ -247,6 +282,7 @@
   <h1>graph</h1><span class="run" id="runName">—</span>
   <button class="lbtn" id="layoutBtn" onclick="toggleLayout()">layout: phase</button>
   <button class="lbtn" onclick="fitView()" title="fit to screen (0)">fit</button>
+  <button class="lbtn" id="resBtn" onclick="toggleResults()" title="run metrics (r)">results</button>
   <span id="zoomLvl">100%</span>
   <span class="orch" id="orch"><span class="hb"></span>orchestrator</span>
   <div class="counts" id="counts"></div>
@@ -289,6 +325,7 @@
   <div id="bar"><div class="seg-done"></div><div class="seg-run"></div><div class="seg-fail"></div></div>
   <span class="n" id="doneCount"></span>
 </footer>
+<div id="results"></div>
 <div id="pop"><span class="close" onclick="closePop()">✕</span><div id="popBody"></div></div>
 <script>
 const $ = (s) => document.querySelector(s)
@@ -325,6 +362,7 @@ function applyView() {
 }
 
 function fitView() {
+  if (RESULTS_OPEN) return backToGraph()
   const vp = $('#viewport').getBoundingClientRect()
   if (!CANVAS_W || !CANVAS_H) return
   const k = Math.min((vp.width - 56) / CANVAS_W, (vp.height - 56) / CANVAS_H, 1.25)
@@ -343,6 +381,8 @@ function zoomAt(mx, my, factor) {
 }
 
 function toggleLayout() {
+  // pressed from the results tab it means "take me back to the graph", not "relayout it"
+  if (RESULTS_OPEN) return backToGraph()
   LAYOUT = LAYOUT === 'phase' ? 'depth' : 'phase'
   try { localStorage.setItem('graphLayout', LAYOUT) } catch { /* private mode */ }
   if (STATE) { render(STATE, EVENTS); fitView() }
@@ -358,6 +398,7 @@ async function tick() {
     EVENTS = (await eRes.json()).events ?? []
     render(STATE, EVENTS)
     if (POP) { fillPop(POP.id); positionPop() }
+    if (RESULTS_OPEN) loadResults()   // an open results tab tracks a live run
   } catch { /* server gone — keep last paint */ }
 }
 
@@ -487,6 +528,130 @@ function subState(t) {
 
 function fmtAge(sec) { return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h` }
 
+function fmtMs(ms) {
+  if (ms == null) return '—'
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}`
+  return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`
+}
+
+/** Every number on the results tab comes from HERE, and everything here is derived from the
+ *  attempt/validation timestamps the engine already records. Nothing new is collected, and
+ *  no figure is invented: what cannot be derived (tokens) is absent, not estimated. */
+function analyse(s, events) {
+  const now = Date.now()
+  const at = (x) => (x ? Date.parse(x) : null)
+  const runStart = at(s.createdAt) ?? now
+  const tasks = Object.values(s.tasks)
+  const live = (t) => t.state === 'running' || t.state === 'reviewing'
+
+  /* Blocked is the only span with no home in state.json — it lives as a pair of events.
+     An unclosed block is still running, so it is measured up to now. */
+  const blocked = {}
+  const openedAt = {}
+  for (const e of events) {
+    if (e.type === 'task_block') openedAt[e.task] = at(e.at)
+    else if (e.type === 'task_unblock' && openedAt[e.task] != null) {
+      blocked[e.task] = (blocked[e.task] ?? 0) + (at(e.at) - openedAt[e.task])
+      delete openedAt[e.task]
+    }
+  }
+  for (const [id, t0] of Object.entries(openedAt)) blocked[id] = (blocked[id] ?? 0) + (now - t0)
+
+  /* Spread is measured over INDIVIDUAL reviews, not per-task totals: a task reviewed twice
+     honestly cost twice, and counting it as one slow review would fake the very variance
+     that distinguishes "the gate is a fixed toll" from "review scales with the task". */
+  const reviewEach = []
+  const per = tasks.map((t) => {
+    let exec = 0, review = 0
+    for (const a of t.attempts) {
+      const st = at(a.startedAt)
+      if (st == null) continue
+      const rv = at(a.reviewStartedAt)
+      const en = at(a.endedAt) ?? (live(t) ? now : null)
+      const execEnd = rv ?? en
+      if (execEnd != null) exec += Math.max(0, execEnd - st)
+      if (rv != null && en != null) {
+        review += Math.max(0, en - rv)
+        reviewEach.push(Math.max(0, en - rv))
+      }
+    }
+    /* A task became READY when its last dep finished — the engine stores no readyAt, but
+       the dep's own endedAt is that instant. Unknown for a skipped dep (never timestamped),
+       and the honest answer there is "—", never a guess. */
+    const depEnds = t.deps.map((d) => {
+      const dep = s.tasks[d]
+      return dep && dep.state === 'done' ? at(dep.attempts.at(-1)?.endedAt) : null
+    })
+    const readyAt = t.deps.length === 0 ? runStart : depEnds.some((x) => x == null) ? null : Math.max(...depEnds)
+    const firstStart = at(t.attempts[0]?.startedAt)
+    const queue = readyAt != null && firstStart != null ? Math.max(0, firstStart - readyAt) : null
+    const verdicts = t.validations.filter((v) => v.by === 'review')
+    return {
+      id: t.id, title: t.title, state: t.state, exec, review, queue,
+      blocked: blocked[t.id] ?? 0,
+      attempts: t.attempts.length,
+      rejected: verdicts.filter((v) => !v.ok).length,
+      approved: verdicts.filter((v) => v.ok).length,
+      reviewed: verdicts.length > 0,
+      skipsReview: (t.requireReview ?? s.plan.requireReview) === false,
+      agentTime: exec + review,
+    }
+  })
+
+  const sum = (f) => per.reduce((n, p) => n + f(p), 0)
+  const execTotal = sum((p) => p.exec)
+  const reviewTotal = sum((p) => p.review)
+  const agentTotal = execTotal + reviewTotal
+  const lastEnd = Math.max(runStart, ...tasks.flatMap((t) => t.attempts.map((a) => at(a.endedAt) ?? 0)))
+  const anyLive = tasks.some(live)
+  const wall = (anyLive ? now : lastEnd) - runStart
+
+  /* The critical path is the floor no amount of parallelism can go under: the longest chain
+     of dependent work. Comparing it to the wall clock says whether the graph's SHAPE or the
+     executor count is the limit — the difference between "add agents" and "restructure". */
+  const W = Object.fromEntries(per.map((p) => [p.id, p.agentTime]))
+  const memo = {}, from = {}
+  const cp = (id) => {
+    if (memo[id] != null) return memo[id]
+    let best = 0, via = null
+    for (const d of s.tasks[id].deps) if (s.tasks[d] && cp(d) > best) { best = cp(d); via = d }
+    from[id] = via
+    return (memo[id] = best + (W[id] ?? 0))
+  }
+  let cpEnd = null
+  for (const id of Object.keys(s.tasks)) if (cpEnd == null || cp(id) > cp(cpEnd)) cpEnd = id
+  const cpLen = cpEnd ? cp(cpEnd) : 0
+  const cpChain = []
+  for (let n = cpEnd; n; n = from[n]) cpChain.unshift(n)
+
+  const mean = reviewEach.length ? reviewEach.reduce((x, y) => x + y, 0) / reviewEach.length : 0
+  const sd = reviewEach.length
+    ? Math.sqrt(reviewEach.reduce((x, y) => x + (y - mean) ** 2, 0) / reviewEach.length) : 0
+  /* Candidate selection compares a TASK's whole review bill against the MEDIAN, not the
+     mean: one twice-reviewed task drags a mean above every well-behaved task and the list
+     comes back empty exactly when it would be most useful. */
+  const taskReviews = per.filter((p) => p.review > 0).map((p) => p.review).sort((x, y) => x - y)
+  const taskReviewMid = taskReviews.length ? taskReviews[Math.floor((taskReviews.length - 1) / 2)] : 0
+
+  return {
+    per, execTotal, reviewTotal, agentTotal, wall,
+    speedup: wall > 0 ? agentTotal / wall : 0,
+    maxExec: s.plan.maxExecutors ?? 3,
+    cap: s.plan.maxParallel ?? 4,
+    cpLen, cpChain,
+    retries: sum((p) => Math.max(0, p.attempts - 1)),
+    rejections: sum((p) => p.rejected),
+    reviews: sum((p) => p.approved + p.rejected),
+    blockedTotal: sum((p) => p.blocked),
+    reviewCV: mean > 0 ? sd / mean : 0,
+    reviewMean: mean,
+    taskReviewMid,
+    anyLive,
+  }
+}
+
 /* timestamps are stored in UTC (ISO); render them in the viewer's own timezone */
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString(undefined, { hour12: false }) : '' }
 
@@ -512,7 +677,9 @@ function render(s, events) {
   const by = {}
   for (const t of list) by[eff(t.id)] = (by[eff(t.id)] ?? 0) + 1
   $('#counts').innerHTML = ['running', 'reviewing', 'ready', 'waiting', 'blocked', 'failed', 'done', 'skipped']
-    .filter((k) => by[k]).map((k) => `<span>${k} <b>${by[k]}</b></span>`).join('')
+    .filter((k) => by[k]).map((k) => k === 'blocked'
+      ? `<span class="ask">✋ waiting on you <b>${by[k]}</b></span>`
+      : `<span>${k} <b>${by[k]}</b></span>`).join('')
 
   const { pos, w, h, usePhase, lanes, laneY0 } = layout(tasks, LAYOUT)
   const canvas = $('#canvas')
@@ -538,6 +705,8 @@ function render(s, events) {
       : e === 'running' && t.agent
       ? `<span class="ag">@${t.agent}</span>${sub2 === 'validated' ? ' <span class="vbadge ok">✓ validated</span>'
           : sub2 === 'valfail' ? ' <span class="vbadge bad">✗ rework</span>' + working : working}`
+      : e === 'blocked'
+      ? `<span class="ask">✋ waiting on you</span>${t.blockReason ? ` <span style="color:var(--dim)">— ${t.blockReason}</span>` : ''}`
       : e === 'waiting' ? `← ${s.derived[t.id].blockedBy.join(',')}`
       : t.title
     const retry = t.attempts.length > 1 ? ` ↻${t.attempts.length}` : ''
@@ -810,7 +979,10 @@ vp.addEventListener('pointercancel', endDrag)
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return
   const r = vp.getBoundingClientRect()
-  if (e.key === '0') fitView()
+  if (e.key === 'r' || e.key === 'R') toggleResults()
+  else if (e.key === 'Escape' && RESULTS_OPEN) toggleResults()
+  else if (RESULTS_OPEN) return   // the canvas keys mean nothing while results is up
+  else if (e.key === '0') fitView()
   else if (e.key === '+' || e.key === '=') zoomAt(r.width / 2, r.height / 2, 1.2)
   else if (e.key === '-' || e.key === '_') zoomAt(r.width / 2, r.height / 2, 1 / 1.2)
 })
@@ -843,6 +1015,125 @@ function fillPop(id) {
       <dt>Notes</dt><dd>${t.notes.map((n) => `<div class="att">${fmtTime(n.at)} — ${n.text}</div>`).join('') || '—'}</dd>
     </dl>
     ${POP?.pinned ? '' : '<div class="pin-hint">click the task to pin · moves away, closes</div>'}`
+}
+
+/* ---- results tab ---------------------------------------------------------------
+   The graph answers "where is the run"; this answers "where did the run GO". It exists so
+   the next plan is authored from evidence — above all `requireReview`, which is a human
+   decision the engine deliberately never makes for itself. */
+let RESULTS_OPEN = false
+let FULL_EVENTS = []      // the tick fetches 120 events; the analysis needs the whole history
+
+async function toggleResults() {
+  RESULTS_OPEN = !RESULTS_OPEN
+  $('#results').classList.toggle('open', RESULTS_OPEN)
+  /* The button that opened the tab is the button that closes it — a view with no visible way
+     back reads as a dead end, and "press the same thing again" is not a way back. */
+  $('#resBtn').textContent = RESULTS_OPEN ? '← graph' : 'results'
+  $('#resBtn').style.color = RESULTS_OPEN ? 'var(--text)' : ''
+  /* Only the zoom READOUT is dimmed — layout and fit stay lit because here they still do
+     something (they take you back), and dimming a control that works reads as disabled. */
+  $('#zoomLvl').style.opacity = RESULTS_OPEN ? '.3' : ''
+  if (RESULTS_OPEN) { closePop(); await loadResults() }
+}
+
+function backToGraph() { if (RESULTS_OPEN) toggleResults() }
+
+async function loadResults() {
+  try {
+    const r = await fetch('/api/events?limit=100000')
+    FULL_EVENTS = (await r.json()).events ?? []
+  } catch { /* keep whatever we had */ }
+  if (STATE) renderResults(STATE)
+}
+
+function renderResults(s) {
+  const a = analyse(s, FULL_EVENTS)
+  const pct = (n, d) => (d > 0 ? Math.round((100 * n) / d) : 0)
+  const bar = (l, r) => {
+    const lp = pct(l, l + r)
+    return `<span class="minibar"><i style="width:${lp}%;background:var(--running)"></i><i style="width:${100 - lp}%;background:var(--review)"></i></span>`
+  }
+  const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${sub ?? ''}</div></div>`
+
+  const execPct = pct(a.execTotal, a.agentTotal)
+  const ranked = a.per.filter((p) => p.agentTime > 0).sort((x, y) => y.agentTime - x.agentTime)
+
+  // findings: only what the numbers actually support, each with the evidence beside it
+  const f = []
+  if (a.cpLen > 0) {
+    const headroom = a.wall - a.cpLen
+    f.push(headroom / Math.max(1, a.wall) < 0.25
+      ? `<div class="finding good"><b>The graph shape is the limit, not the agent count.</b>
+         <span class="why">The critical path (${fmtMs(a.cpLen)}) is ${pct(a.cpLen, a.wall)}% of the wall clock (${fmtMs(a.wall)}) — more executors cannot beat that chain. To go faster, break the chain: ${a.cpChain.join(' → ')}.</span></div>`
+      : `<div class="finding warn"><b>There is parallelism left on the table.</b>
+         <span class="why">The critical path is only ${fmtMs(a.cpLen)} of a ${fmtMs(a.wall)} run, so ${fmtMs(headroom)} went to waiting rather than to dependency — check retries, blocks and dispatch gaps before adding executors.</span></div>`)
+  }
+  if (a.reviewTotal > 0) {
+    f.push(a.reviewCV < 0.35
+      ? `<div class="finding warn"><b>Review cost looks FIXED, not proportional — suspect the gate.</b>
+         <span class="why">Review takes ${fmtMs(a.reviewMean)} on average with little spread between tasks (variation ${Math.round(a.reviewCV * 100)}%). A reviewer that costs the same on a one-line task and a large one is paying a constant: usually the full suite running per task. Scope the gate to what the task changed and keep the full run for the end.</span></div>`
+      : `<div class="finding info"><b>Review cost scales with the task.</b>
+         <span class="why">Spread across tasks is ${Math.round(a.reviewCV * 100)}% of the mean, so review time tracks task size rather than a fixed per-task toll — the gate is not the constant here.</span></div>`)
+  }
+  if (a.reviews > 0) {
+    f.push(a.rejections > 0
+      ? `<div class="finding good"><b>Review caught ${a.rejections} defect(s) in ${a.reviews} verdict(s).</b>
+         <span class="why">A ${pct(a.rejections, a.reviews)}% rejection rate is what the ${pct(a.reviewTotal, a.agentTotal)}% of agent time spent reviewing bought. Compare that against the cost of those defects reaching the tasks built on top of them, not against zero.</span></div>`
+      : `<div class="finding info"><b>Review approved everything it saw (${a.reviews} verdicts, 0 rejections).</b>
+         <span class="why">One clean run is not proof the gate is redundant — but it is the signal to start marking the safest tasks below as <code>requireReview: false</code> and watch whether defects appear.</span></div>`)
+  }
+  /* Candidates are DESCRIBED, never applied: turning off a task's gate is the dev's call,
+     made in the plan. The tab's job is to replace a guess with evidence. */
+  const cands = ranked.filter((p) => !p.skipsReview && p.reviewed && p.rejected === 0 && p.attempts === 1 && p.review >= a.taskReviewMid)
+  if (cands.length) {
+    f.push(`<div class="finding info"><b>${cands.length} task(s) where review cost above average and never found anything:</b>
+      <span class="why">${cands.map((p) => `${p.id} (${fmtMs(p.review)})`).join(', ')} — passed first try, no rejection. If they are mechanical by nature, <code>"requireReview": false</code> in the next plan reclaims ${fmtMs(cands.reduce((n, p) => n + p.review, 0))}. If they are merely easy-looking, leave the gate on: those are where a confident agent errs quietly.</span></div>`)
+  }
+
+  $('#results').innerHTML = `
+    <button class="lbtn" onclick="backToGraph()" style="margin-bottom:14px">← back to the graph</button>
+    <h2>${s.run} — ${s.plan.name}</h2>
+    <div class="note">Derived from this run's attempt timestamps and event log${a.anyLive ? ' · run still ACTIVE, figures move' : ''}. Tokens are not shown: the engine makes no model calls and never sees them — read those from your agent harness.</div>
+
+    <div class="tiles">
+      ${tile('Wall clock', fmtMs(a.wall), a.anyLive ? 'so far' : 'init → last task')}
+      ${tile('Agent time', fmtMs(a.agentTotal), 'what one agent would have spent')}
+      ${tile('Parallel gain', `${a.speedup.toFixed(2)}×`, `${a.maxExec} executors + review headroom`)}
+      ${tile('Critical path', fmtMs(a.cpLen), `${pct(a.cpLen, a.wall)}% of wall clock`)}
+      ${tile('Review share', `${pct(a.reviewTotal, a.agentTotal)}%`, `${a.reviews} verdicts · ${a.rejections} rejected`)}
+      ${tile('Retries', String(a.retries), a.blockedTotal > 0 ? `blocked ${fmtMs(a.blockedTotal)}` : 'no human blocks')}
+    </div>
+
+    <h3>Agent time: building vs verifying</h3>
+    <div class="split">
+      <div style="width:${execPct}%;background:var(--running)">${execPct >= 12 ? `exec ${fmtMs(a.execTotal)}` : ''}</div>
+      <div style="width:${100 - execPct}%;background:var(--review)">${100 - execPct >= 12 ? `review ${fmtMs(a.reviewTotal)}` : ''}</div>
+    </div>
+
+    <h3>Per task</h3>
+    <table class="rtable">
+      <tr><th>Task</th><th class="num">Exec</th><th class="num">Review</th><th>build vs verify</th>
+          <th class="num">Queued</th><th class="num">Blocked</th><th class="num">Att.</th><th class="num">Verdicts</th></tr>
+      ${ranked.map((p) => `<tr>
+        <td class="tid" onclick="jumpTo('${p.id}')">${p.id} <span style="color:var(--dim)">${(p.title ?? '').slice(0, 34)}</span></td>
+        <td class="num">${fmtMs(p.exec)}</td>
+        <td class="num">${p.skipsReview ? '<span style="color:var(--dim)">gate only</span>' : fmtMs(p.review)}</td>
+        <td>${p.review > 0 ? bar(p.exec, p.review) : ''}</td>
+        <td class="num">${p.queue == null ? '—' : fmtMs(p.queue)}</td>
+        <td class="num">${p.blocked > 0 ? `<span style="color:var(--blocked)">${fmtMs(p.blocked)}</span>` : '—'}</td>
+        <td class="num">${p.attempts > 1 ? `<span style="color:var(--running)">↻${p.attempts}</span>` : p.attempts}</td>
+        <td class="num">${p.approved ? `<span style="color:var(--done)">✓${p.approved}</span> ` : ''}${p.rejected ? `<span style="color:var(--failed)">✗${p.rejected}</span>` : ''}${!p.reviewed ? '—' : ''}</td>
+      </tr>`).join('')}
+    </table>
+
+    <h3>What the numbers support</h3>
+    ${f.join('') || '<div class="finding">Not enough finished work to say anything yet.</div>'}`
+}
+
+function jumpTo(id) {
+  toggleResults()
+  openPop(id, true)
 }
 
 function openPop(id, pinned) {

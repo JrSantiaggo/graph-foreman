@@ -75,7 +75,7 @@ the skill is the DISCIPLINE. Neither replaces the other.
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `engine.mjs`     | CLI + state machine. The ONLY writer of state.                                                                                                                                                                                                                                                                                                    |
 | `serve.mjs`      | Read-only HTTP server for the dashboard. Killing it never affects a run.                                                                                                                                                                                                                                                                          |
-| `dashboard.html` | Live view: DAG laid out as phase swimlanes (toggle to dep-depth layering), animated dep edges, lineage highlight on hover, task details in a popover beside the node (long hover peeks, click pins; side panel = run state + logs only), working/validated sub-state per running task, orchestrator heartbeat, event flashes, retries, event log. |
+| `dashboard.html` | Live view: DAG laid out as phase swimlanes (toggle to dep-depth layering), animated dep edges, lineage highlight on hover, task details in a popover beside the node (long hover peeks, click pins; side panel = run state + logs only), working/validated sub-state per running task, orchestrator heartbeat, event flashes, retries, event log. Plus a **results** tab (`r`) deriving what the run cost — see below. |
 
 State lives in `.specs/graph/<run>/` at the **project root** — discovered by walking up from
 cwd to the first `.git` or `package.json` (`GRAPH_ROOT` overrides; no marker found = loud
@@ -247,6 +247,35 @@ would ever open. Below ~55% zoom the cards drop to **id + colour only**; a subti
 40% scale is noise, and reading the run by colour is the whole point of being zoomed out.
 
 Serving a run other than `CURRENT`: `node .claude/skills/graph-foreman/scripts/serve.mjs --run <name>`.
+
+### Results
+
+The header's **results** button (or `r`) swaps the graph for what the run cost. Everything on
+it is DERIVED from the attempt timestamps and events the engine already records — no extra
+collection, no engine involvement, and nothing it cannot derive is estimated:
+
+- **Wall clock vs agent time**, and the parallel gain between them (agent time ÷ wall clock).
+- **Build vs verify** — how the agent time split between executors and reviewers. This is the
+  cost question: reviewing is a real share of the bill, and it is only visible as a share.
+- **Critical path** vs wall clock. The longest chain of dependent work is the floor no number
+  of executors can go under, so this is what separates "add agents" from "restructure the
+  plan" — if the path is ~all of the wall clock, more executors buy nothing.
+- **Slots busy over the run**, sampled, with the executor cap drawn in — where the graph ran
+  wide and where it ran on one thread.
+- **Per task**: exec, review, time queued waiting on deps, time blocked on the dev, attempts
+  and verdicts.
+- **What the numbers support** — findings stated with their evidence, not advice: whether
+  review cost is FIXED across tasks (the signature of running the whole suite per task,
+  rather than a gate scoped to what changed), what the review gate actually caught, and which
+  tasks were reviewed above the median cost and never rejected.
+
+That last one exists for one decision: `requireReview` is authored by hand in the plan, and
+the engine deliberately never decides it — an orchestrator that picks which of its own tasks
+skip verification is the gate guarding itself. The tab's job is to replace the guess with the
+previous run's evidence. It names candidates; the dev marks them.
+
+Tokens are absent on purpose: the engine makes no model calls and never sees them. Read those
+from the agent harness.
 
 ## License
 

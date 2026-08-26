@@ -38,7 +38,10 @@
  *   node $ENGINE note <task> --text "<text>"
  *   node $ENGINE runs
  */
-import { mkdirSync, readFileSync, writeFileSync, appendFileSync, renameSync, existsSync, readdirSync } from 'node:fs'
+import {
+  mkdirSync, readFileSync, writeFileSync, appendFileSync, renameSync, existsSync, readdirSync,
+  rmSync, statSync,
+} from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 
 /* The project root is DISCOVERED, never assumed from where this script happens to live —
@@ -78,6 +81,8 @@ const CURRENT_FILE = join(GRAPH_DIR, 'CURRENT')
 const MAX_ATTEMPTS_SOFT = 3
 const DEFAULT_MAX_PARALLEL = 4
 const DEFAULT_MAX_EXECUTORS = 3   // the 4th slot is RESERVED for review
+const LOCK_WAIT_MS = 5000         // how long a command waits for the run's lock
+const LOCK_STALE_MS = 30000       // a lock older than this belonged to a process that died
 
 // ---------- tiny arg parser ----------
 const [, , cmd, ...rest] = process.argv
@@ -121,6 +126,58 @@ function saveState(name, state) {
   const tmp = join(dir, 'state.json.tmp')
   writeFileSync(tmp, JSON.stringify(state, null, 2))
   renameSync(tmp, join(dir, 'state.json'))
+}
+
+/* Every mutating command is a read-modify-write of state.json from its OWN short-lived
+ * process, and the orchestrator is told to dispatch several in the SAME message — so they
+ * really do run at once. Unlocked, the last writer wins: a `start` prints "running" and
+ * appends its event while its change to state.json is overwritten by a sibling, leaving a
+ * task the graph thinks is pending and an agent already working on it. The atomic rename in
+ * saveState prevents a torn file; only this prevents a lost one.
+ *
+ * The lock is a DIRECTORY: mkdir is atomic and fails loudly when it exists, on every
+ * platform, with no O_EXCL caveats. One lock per run, so two runs never wait on each other.
+ */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+let heldLock = null
+/* die() exits the process from INSIDE the locked section (a refused transition is the
+   normal path, not an exception), and process.exit skips finally blocks — so the release
+   must also live on the exit event or every refusal would strand its lock. */
+process.on('exit', () => { if (heldLock) rmSync(heldLock, { recursive: true, force: true }) })
+
+function withLock(name, fn) {
+  const dir = runDir(name)
+  mkdirSync(dir, { recursive: true })   // init locks before the run directory exists
+  const lock = join(dir, '.lock')
+  const deadline = Date.now() + LOCK_WAIT_MS
+  for (;;) {
+    try {
+      mkdirSync(lock)
+      heldLock = lock
+      break
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e
+      /* A process killed mid-command leaves its lock behind. Age is the only evidence
+         available, so an old one is presumed abandoned and broken — a run that can never
+         write again would be a worse failure than the collision this guards against. */
+      const age = Date.now() - statSync(lock).mtimeMs
+      if (age > LOCK_STALE_MS) {
+        rmSync(lock, { recursive: true, force: true })
+        continue
+      }
+      if (Date.now() > deadline) die(`run "${name}" is locked by another command (waited ${LOCK_WAIT_MS}ms) — retry`)
+      sleepSync(25)
+    }
+  }
+  try {
+    return fn()
+  } finally {
+    rmSync(lock, { recursive: true, force: true })
+    heldLock = null
+  }
 }
 
 function emit(name, type, task, data = {}) {
@@ -551,4 +608,10 @@ if (!cmd || !commands[cmd]) {
   console.error(`usage: engine.mjs <${Object.keys(commands).join('|')}> — see file header for details`)
   process.exit(1)
 }
-commands[cmd]()
+
+/* Readers need no lock: saveState renames a complete file into place, so a reader sees
+   either the previous state or the next one, never a half-written one. Everything else
+   takes the run's lock for its whole read-modify-write. */
+const READ_ONLY = new Set(['runs', 'status', 'ready', 'graph'])
+if (READ_ONLY.has(cmd)) commands[cmd]()
+else withLock(cmd === 'init' ? (args.run ?? die('init needs --run <name>')) : runName(), commands[cmd])
