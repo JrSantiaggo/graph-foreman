@@ -104,8 +104,31 @@ node $ENGINE validate T4 --ok --evidence "..."  # the REVIEWER's verdict
 node $ENGINE done T4
 ```
 
-Dispatch every ready task the executor cap allows **in the same message** — parallelism is the
-point of the graph, and tasks that share no dep share no file.
+### Dispatch — `start` records it, it does not make it
+
+**Every `start` is paired with a subagent call in the SAME message** (Claude Code: the Task
+tool). Every ready task the executor cap allows goes out in that one message — parallelism is
+the point of the graph, and tasks that share no dep share no file. The engine only ever sees
+the `--agent` string, so an orchestrator that runs `start` and then writes the code itself
+passes every check and leaves a state file that lies: `--agent` must name an agent that
+EXISTS. That is the one rule here the engine cannot enforce for you.
+
+`review` is a subagent call too — a `review` with no reviewer behind it is the same self-report
+wearing a different label. It is not capacity-capped, so it goes out the moment work finishes.
+
+Each executor gets the task and nothing else about the run:
+
+```text
+You are the EXECUTOR for <T4>: <title>. Deliver exactly that, then stop.
+Read the project's agent rules first.
+Write ONLY under: <touches>  — another executor owns the rest, right now.
+Build on what these already produced: <deps>.
+Your work must satisfy, clause by clause: <validation>
+  A DIFFERENT agent checks your diff against that contract and never sees this message.
+<on a retry: the reviewer's --reason, verbatim>
+Commit policy: <Project overrides>. Never touch .specs/graph/ — the orchestrator owns the state.
+Report back: what you changed, and what a reviewer needs to reproduce it.
+```
 
 ### Capacity
 
@@ -126,6 +149,20 @@ The task's **validation contract** and the **diff** — and nothing about how th
 executor's narrative is the thing most likely to talk it into a pass. The reviewer runs the
 project's gate ITSELF (see Project overrides), checks the contract clause by clause, and
 answers `--ok` or `--failed`.
+
+```text
+You are the REVIEWER for <T4>: <title>. You did NOT write this code.
+Judge this diff: <the paths under `touches`>
+Against this contract, clause by clause: <validation>
+Run the gate YOURSELF: <Project overrides>. Reproduce it — never accept a claim.
+Answer:
+  verdict:  ok | failed
+  evidence: what you RAN and what it ANSWERED — commands and counts, not impressions.
+  if failed: what is missing, specific enough for the next executor to act on.
+```
+
+What is absent from that message is the point: no executor report, no attempt count, no "the
+suite was already green". A fresh agent, a clean context, and the contract.
 
 - **`--evidence` is a claim the reviewer is making**: what was run, and what it answered.
   `done` refuses without a passing review validation for the CURRENT attempt — the one rule
